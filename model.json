@@ -1,0 +1,9 @@
+{
+  "feature_names": ["yes_mid", "minutes_left", "ret_1m"],
+  "coef": [1.5386895068624757, 0.06240924435099608, -0.8294242415838726],
+  "intercept": -1.4661482082067465,
+  "kind": "sklearn",
+  "n": 322,
+  "base_rate": 0.5,
+  "note": "Candles lack CF/underlying spot; mid-only model. CF recalibration was MIXED and did not replace this."
+}
