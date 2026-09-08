@@ -53,12 +53,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     client = KalshiClient(dry_run=True)
-    events = client.iter_events(series_ticker=BTC_SERIES, status="settled", with_nested_markets=False)
+    if args.all:
+        events = client.iter_events(series_ticker=BTC_SERIES, status="settled", with_nested_markets=False)
+    else:
+        events = client.iter_events(
+            series_ticker=BTC_SERIES,
+            status="settled",
+            with_nested_markets=False,
+            max_items=max(0, int(args.n)),
+        )
+
     if not events:
         print("No settled KXBTC15M events returned.")
         return 0
-    if not args.all:
-        events = events[: max(0, int(args.n))]
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     fetched = 0

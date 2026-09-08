@@ -79,6 +79,7 @@ class KalshiClient:
         self.dry_run = dry_run_enabled() if dry_run is None else bool(dry_run)
         self.api_key_id: str | None = None
         self._private_key = None
+        self._cooldown_until = 0.0
         self._load_secrets(secrets_path)
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json", "User-Agent": "kalshi-btc-grokbot/0.1"})
@@ -174,6 +175,11 @@ class KalshiClient:
         lowered = path.lower()
         return any(m in lowered for m in ORDER_PATH_MARKERS)
 
+    def _wait_cooldown(self) -> None:
+        wait = self._cooldown_until - time.time()
+        if wait > 0:
+            time.sleep(wait)
+
     def _sleep_429(self, attempt: int, response: requests.Response | None) -> None:
         retry_after = None
         if response is not None:
@@ -183,9 +189,10 @@ class KalshiClient:
                     retry_after = float(raw)
                 except ValueError:
                     retry_after = None
-        delay = retry_after if retry_after is not None else min(30.0, 0.5 * (2**attempt))
+        delay = retry_after if retry_after is not None else min(30.0, 1.0 * (2**attempt))
         delay += random.uniform(0.0, 0.25)
         log.warning("HTTP 429; backing off %.2fs (attempt %s)", delay, attempt + 1)
+        self._cooldown_until = time.time() + delay
         time.sleep(delay)
 
     def request(
@@ -208,6 +215,7 @@ class KalshiClient:
         url = self._request_url(path)
         last_exc: Exception | None = None
         for attempt in range(self.max_retries):
+            self._wait_cooldown()
             headers = {"Content-Type": "application/json"} if json_body is not None else {}
             headers.update(self._auth_headers(method_u, path))
             try:
@@ -290,12 +298,19 @@ class KalshiClient:
         limit: int = 200,
         with_nested_markets: bool = False,
         max_pages: int | None = None,
+        max_items: int | None = None,
     ) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         cursor: str | None = None
         pages = 0
         while True:
-            params: dict[str, Any] = {"series_ticker": series_ticker, "limit": limit}
+            page_limit = limit
+            if max_items is not None:
+                remaining = max_items - len(out)
+                if remaining <= 0:
+                    break
+                page_limit = max(1, min(limit, remaining))
+            params: dict[str, Any] = {"series_ticker": series_ticker, "limit": page_limit}
             if status:
                 params["status"] = status
             if with_nested_markets:
@@ -303,10 +318,14 @@ class KalshiClient:
             if cursor:
                 params["cursor"] = cursor
             data = self.get("/events", params=params) or {}
-            out.extend(data.get("events") or [])
+            batch = data.get("events") or []
+            out.extend(batch)
             pages += 1
+            if max_items is not None and len(out) >= max_items:
+                out = out[:max_items]
+                break
             cursor = data.get("cursor") or None
-            if not cursor:
+            if not cursor or not batch:
                 break
             if max_pages is not None and pages >= max_pages:
                 break

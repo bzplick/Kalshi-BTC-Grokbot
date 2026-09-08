@@ -11,7 +11,7 @@ the MIXED calibration (do not cut mm-* bots).
 from __future__ import annotations
 
 import json
-import math
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -117,13 +117,21 @@ def extract_cf_moneyness(payload: dict) -> float | None:
         strike = _f(details.get(k) or payload.get(k))
         if strike:
             break
+    if strike is None:
+        title = str(payload.get("title") or details.get("title") or "")
+        m = re.search(r"\$([0-9][0-9,]*(?:\.[0-9]+)?)", title)
+        if m:
+            try:
+                strike = float(m.group(1).replace(",", ""))
+            except ValueError:
+                strike = None
     path_vals: list[float] = []
     for key in ("path", "points", "values", "prices", "timeseries", "data"):
         series = details.get(key)
         if isinstance(series, list) and series:
             for pt in series:
                 if isinstance(pt, dict):
-                    v = _f(pt.get("value") or pt.get("price") or pt.get("y") or pt.get("close"))
+                    v = _f(pt.get("v") or pt.get("value") or pt.get("price") or pt.get("y") or pt.get("close"))
                 elif isinstance(pt, (list, tuple)) and len(pt) >= 2:
                     v = _f(pt[1])
                 else:
@@ -131,6 +139,15 @@ def extract_cf_moneyness(payload: dict) -> float | None:
                 if v is not None:
                     path_vals.append(v)
             break
+    if not path_vals:
+        candles = details.get("candlesticks") or {}
+        if isinstance(candles, dict):
+            series = candles.get("1M") or candles.get("1m") or []
+            for pt in series or []:
+                if isinstance(pt, dict):
+                    v = _f(pt.get("close") or pt.get("c"))
+                    if v is not None:
+                        path_vals.append(v)
     if not path_vals:
         return None
     last = path_vals[-1]
@@ -519,11 +536,13 @@ def main() -> int:
     cf_index = load_cf_index()
 
     if not fills or not settlements:
-        REPORT_PATH.write_text(shipped_report(), encoding="utf-8")
-        SUMMARY_PATH.write_text(json.dumps(shipped_summary(), indent=2) + "\n", encoding="utf-8")
+        if not REPORT_PATH.is_file():
+            REPORT_PATH.write_text(shipped_report(), encoding="utf-8")
+        if not SUMMARY_PATH.is_file():
+            SUMMARY_PATH.write_text(json.dumps(shipped_summary(), indent=2) + "\n", encoding="utf-8")
         print("No raw/fills.json and/or raw/settlements.json.")
         print("Left committed mid-only model.json in place (n=322).")
-        print("Rewrote calibration-report.md + calibration_summary.json with MIXED snapshot.")
+        print("MIXED snapshot unchanged (calibration-report.md / calibration_summary.json).")
         print("CF paths indexed:", len(cf_index))
         print("Live trading: off. DRY_RUN default. Do not cut mm-* bots.")
         return 0
