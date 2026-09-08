@@ -1,0 +1,29 @@
+{
+  "model": "mid-only",
+  "kind": "sklearn",
+  "n_windows": 322,
+  "mm_windows": {
+    "n": 322,
+    "pnl_usd": 13.26,
+    "win_rate": 0.59,
+    "note": "322 mm windows +$13.26 @ 59% WR"
+  },
+  "rejected": {"plus": 25, "minus": 10, "note": "+25/-10 rejected"},
+  "mid_only_oos": {
+    "thr": 0.05,
+    "n": 5,
+    "pnl_usd": 7.0,
+    "verdict": "MIXED"
+  },
+  "cf_recal": {
+    "n_paths": 322,
+    "best_oos": {"thr": 0.03, "n": 11, "pnl_usd": 5.0},
+    "beat_mid_only": false,
+    "verdict": "MIXED"
+  },
+  "hold_to_settlement_thresholds": [0.03, 0.05, 0.08],
+  "kept_model": "model.json mid-only",
+  "live_trading": false,
+  "dry_run_default": true,
+  "mm_bot": "do not cut mm-* coexistence; calibration MIXED"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "stub",
+  "feature_names": ["yes_mid", "minutes_left", "ret_1m", "cf_moneyness"],
+  "note": "CF moneyness recalibration was MIXED and did not replace mid-only model.json. 322 CF paths fetched; best OOS was thr=0.03 n=11 +$5, which did not beat mid-only thr=0.05 n=5 +$7. Do not use this stub for scoring or live trading."
+}
