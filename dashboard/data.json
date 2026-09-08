@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-08T19:31:16.109347+00:00",
+  "generated_at": "2026-09-08T19:49:46.212284+00:00",
   "source": {
-    "ledger": "/workspace/dashboard/sample_ledger.jsonl",
-    "settlements": "/workspace/dashboard/sample_settlements.json",
+    "ledger": "dashboard/sample_ledger.jsonl",
+    "settlements": "dashboard/sample_settlements.json",
     "sample": true,
     "skipped_jsonl_lines": 1
   },

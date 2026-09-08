@@ -281,6 +281,15 @@ def paper_pnl(yes_result: int | None, ask: float | None, clip: int | None) -> fl
     return round(n * (yes_result - ask), 4)
 
 
+def relpath(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def last_run_from_aux() -> datetime | None:
     state = load_json(STATE_PATH)
     if isinstance(state, dict):
@@ -458,8 +467,8 @@ def build_payload(
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": {
-            "ledger": str(ledger_path),
-            "settlements": str(settlements_path) if settlements_path else None,
+            "ledger": relpath(ledger_path) or str(ledger_path),
+            "settlements": relpath(settlements_path),
             "sample": using_sample,
             "skipped_jsonl_lines": skipped_lines,
         },
