@@ -14,10 +14,12 @@ from typing import Any, Mapping
 ROOT = Path(__file__).resolve().parent
 MODEL_PATH = ROOT / "model.json"
 
+from filters import MAX_ENTRY_PREMIUM
+
 # Paper / scan gates (BTC). ETH is not scored with this model.
 THR = 0.05
 ASK_LO = 0.40
-ASK_HI = 0.65
+ASK_HI = MAX_ENTRY_PREMIUM  # skip ask/premium > 0.65 (mm loser autopsy)
 MAX_SPREAD = 0.02
 MIN_MINUTES_LEFT = 2.0
 

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from edge_model import ASK_HI, ASK_LO, MAX_SPREAD, MIN_MINUTES_LEFT, _sigmoid
+from filters import clip_from_dollars, should_skip_entry
 
 ROOT = Path(__file__).resolve().parent
 RAW = ROOT / "raw"
@@ -338,6 +339,10 @@ def hold_to_settlement(windows: list[dict], coef: list[float], intercept: float,
         if ask is None or left is None:
             continue
         if not (ASK_LO <= ask <= ASK_HI):
+            continue
+        clip = clip_from_dollars(ask)
+        filt_skip, _reason = should_skip_entry(ask, clip)
+        if filt_skip or clip < 1:
             continue
         if spread > MAX_SPREAD or left < MIN_MINUTES_LEFT:
             continue

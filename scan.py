@@ -11,12 +11,12 @@ import sys
 
 from client import (
     KalshiClient,
-    fetch_ret_1m,
     load_dotenv,
     minutes_left,
     quotes_from_market,
 )
-from edge_model import THR, edge_yes, gate_flags, gates_pass, model_p
+from edge_model import THR, edge_yes, gate_flags, gates_pass
+from filters import DEFAULT_CLIP, MAX_CLIP, MAX_ENTRY_PREMIUM, clip_from_dollars, should_skip_entry
 from paper_once_calibrated import evaluate_btc_market
 
 BTC_SERIES = "KXBTC15M"
@@ -50,6 +50,8 @@ def evaluate_eth_crude(client: KalshiClient, market: dict) -> dict:
     flags = {}
     if yes_ask is not None and spread is not None and left is not None and edge is not None:
         flags = gate_flags(yes_ask=yes_ask, spread=spread, minutes_left=left, edge=edge, thr=THR)
+    clip = clip_from_dollars(yes_ask) if yes_ask is not None else DEFAULT_CLIP
+    filter_skip, filter_reason = should_skip_entry(yes_ask, clip)
     return {
         "series": ETH_SERIES,
         "ticker": ticker,
@@ -62,9 +64,14 @@ def evaluate_eth_crude(client: KalshiClient, market: dict) -> dict:
         "model_p": p,
         "edge": edge,
         "gates": flags,
+        "clip": clip,
+        "max_clip": MAX_CLIP,
+        "filter_skip": filter_skip,
+        "filter_reason": filter_reason,
         "model": "crude_fallback",
         "note": "ETH crude fallback (yes_mid as p); not edge_model. Do not trade.",
         "decision": "skip",
+        "reason": filter_reason or "eth_crude_fallback",
     }
 
 
@@ -77,17 +84,22 @@ def print_table(rows: list[dict]) -> None:
         "model_p",
         "edge",
         "gates",
+        "skip",
+        "clip",
         "model",
     )
     body = []
     for r in rows:
         flags = r.get("gates") or {}
-        if flags:
+        if r.get("filter_skip") and r.get("filter_reason"):
+            gate_s = str(r.get("filter_reason"))
+        elif flags:
             gate_s = "PASS" if gates_pass(flags) else ",".join(
                 k for k, v in flags.items() if not v
             ) or "FAIL"
         else:
             gate_s = "—"
+        skip_s = str(r.get("reason") or "—") if r.get("decision") == "skip" else "—"
         body.append(
             [
                 str(r.get("ticker") or ""),
@@ -97,6 +109,8 @@ def print_table(rows: list[dict]) -> None:
                 _fmt(r.get("model_p")),
                 _fmt(r.get("edge")),
                 gate_s,
+                skip_s,
+                str(r.get("clip") if r.get("clip") is not None else "—"),
                 str(r.get("model") or "edge_model"),
             ]
         )
@@ -143,8 +157,13 @@ def main(argv: list[str] | None = None) -> int:
         print_table(rows)
     takes = [r for r in rows if r.get("decision") == "take_yes_paper"]
     print()
-    print(f"dry_run=1  live_trading=off  btc_rows={sum(1 for r in rows if r.get('series')==BTC_SERIES)}  "
-          f"paper_takes={len(takes)}  (never POSTs)")
+    print(
+        f"dry_run=1  live_trading=off  max_premium={MAX_ENTRY_PREMIUM}  max_clip={MAX_CLIP}  "
+        f"default_clip={DEFAULT_CLIP}  btc_rows={sum(1 for r in rows if r.get('series')==BTC_SERIES)}  "
+        f"paper_takes={len(takes)}  "
+        f"skip_premium={sum(1 for r in rows if r.get('reason')=='premium_gt_065')}  "
+        f"skip_clip={sum(1 for r in rows if r.get('reason')=='clip_gt_5')}  (never POSTs)"
+    )
     if args.json:
         import json
 

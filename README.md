@@ -55,7 +55,9 @@ python fetch_cf_paths.py --n 24
 
 - `paper_once_calibrated.py` — BTC-only dry run of open `KXBTC15M`. Orderbook
   mid → features → `edge_model.model_p`. Gates: **thr=0.05**, yes ask **0.40–0.65**,
-  spread **≤ 0.02**, **≥ 2 min** left. JSONL decisions to stdout + `ledger.jsonl`.
+  spread **≤ 0.02**, **≥ 2 min** left. Paper risk filters (mm loser autopsy):
+  **skip if ask/premium > 0.65** (`premium_gt_065`); **clip default 4, hard-cap 5,
+  never 6–8** (`clip_gt_5`). JSONL decisions to stdout + `ledger.jsonl`.
   **Never POSTs orders.** ETH is skipped (noted in the output).
 - `scan.py` — table of ticker, time left, yes bid/ask, model_p, edge, gates.
   BTC uses `edge_model`. Optional `python scan.py --eth` adds `KXETH15M` with a
@@ -76,6 +78,25 @@ n=322). `edge_model.model_p(features)` applies a logistic sigmoid to
 `coef · [yes_mid, minutes_left, ret_1m] + intercept` and imputes missing
 `ret_1m` → 0. [`model_cf.json`](model_cf.json) is a **stub note** that CF
 recalibration was MIXED and must not be used for scoring.
+
+## Paper risk filters (mm loser autopsy)
+
+[`filters.py`](filters.py): `MAX_ENTRY_PREMIUM=0.65`, `MAX_CLIP=5`, default clip **4**
+when sizing from dollars. `should_skip_entry(ask, count) -> (bool, reason)`.
+
+1. **Skip paper entry if ask/premium > 0.65** — ledger reason `premium_gt_065`.
+2. **Hard-cap clip at 5** (never size 6–8). Dollar sizing uses clip **4**, then
+   caps at 5. Ledger reason `clip_gt_5` if a proposed count is still > 5.
+
+Wired into `paper_once_calibrated.py`, `scan.py`, and the calibrate hold-to-settlement
+entry path. Live trading stays off.
+
+Optional **mm overlay** (comparison only — does not cancel, replace, or post live
+orders). When observing mm fills, flag those that paper filters would have skipped:
+
+```bash
+python filters.py --mm-overlay raw/fills.json
+```
 
 ## Safety
 

@@ -22,6 +22,13 @@ from client import (
     quotes_from_market,
 )
 from edge_model import THR, edge_yes, gate_flags, gates_pass, model_p
+from filters import (
+    DEFAULT_CLIP,
+    MAX_CLIP,
+    MAX_ENTRY_PREMIUM,
+    clip_from_dollars,
+    should_skip_entry,
+)
 
 ROOT = Path(__file__).resolve().parent
 BTC_SERIES = "KXBTC15M"
@@ -82,9 +89,18 @@ def evaluate_btc_market(client: KalshiClient, market: dict) -> dict:
     p = model_p({"yes_mid": yes_mid, "minutes_left": left, "ret_1m": ret})
     edge = edge_yes(p, yes_ask)
     flags = gate_flags(yes_ask=yes_ask, spread=spread, minutes_left=left, edge=edge, thr=THR)
-    take = gates_pass(flags)
     size_cap = max_trade_dollars()
-    contracts = int(size_cap / yes_ask) if take and yes_ask > 0 else 0
+    clip = clip_from_dollars(yes_ask, size_cap)
+    filter_skip, filter_reason = should_skip_entry(yes_ask, clip)
+    take = gates_pass(flags) and not filter_skip and clip >= 1
+    if filter_skip:
+        decision, reason = "skip", filter_reason
+    elif not gates_pass(flags):
+        decision, reason = "skip", "gates_fail"
+    elif clip < 1:
+        decision, reason = "skip", "clip_zero"
+    else:
+        decision, reason = "take_yes_paper", "gates_pass"
     row.update(
         {
             "model_p": p,
@@ -92,11 +108,19 @@ def evaluate_btc_market(client: KalshiClient, market: dict) -> dict:
             "gates": flags,
             "thr": THR,
             "max_trade_dollars": size_cap,
-            "hypothetical_contracts": contracts,
-            "decision": "take_yes_paper" if take else "skip",
-            "reason": "gates_pass" if take else "gates_fail",
+            "max_entry_premium": MAX_ENTRY_PREMIUM,
+            "max_clip": MAX_CLIP,
+            "default_clip": DEFAULT_CLIP,
+            "hypothetical_contracts": clip if take else 0,
+            "clip": clip,
+            "filter_skip": filter_skip,
+            "filter_reason": filter_reason,
+            "decision": decision,
+            "reason": reason,
         }
     )
+    if filter_skip:
+        row["event"] = "paper_skip"
     return row
 
 
@@ -142,7 +166,10 @@ def main(argv: list[str] | None = None) -> int:
         "series": BTC_SERIES,
         "skip_eth": True,
         "thr": THR,
-        "ask_band": [0.40, 0.65],
+        "ask_band": [0.40, MAX_ENTRY_PREMIUM],
+        "max_entry_premium": MAX_ENTRY_PREMIUM,
+        "max_clip": MAX_CLIP,
+        "default_clip": DEFAULT_CLIP,
         "max_spread": 0.02,
         "min_minutes_left": 2.0,
         "authenticated": client.authenticated,
@@ -190,11 +217,16 @@ def main(argv: list[str] | None = None) -> int:
         "n_btc_markets": sum(1 for r in rows if r.get("series") == BTC_SERIES and r.get("ticker")),
         "n_take_paper": len(takes),
         "n_skip": sum(1 for r in rows if r.get("decision") == "skip"),
+        "n_skip_premium_gt_065": sum(1 for r in rows if r.get("reason") == "premium_gt_065"),
+        "n_skip_clip_gt_5": sum(1 for r in rows if r.get("reason") == "clip_gt_5"),
         "dry_run": True,
         "posted_orders": 0,
         "would_post": False,
         "eth_skipped": True,
         "tickers_take": [r.get("ticker") for r in takes],
+        "max_entry_premium": MAX_ENTRY_PREMIUM,
+        "max_clip": MAX_CLIP,
+        "default_clip": DEFAULT_CLIP,
     }
     print(json.dumps(summary))
     append_jsonl(LEDGER_PATH, rows + [summary])
