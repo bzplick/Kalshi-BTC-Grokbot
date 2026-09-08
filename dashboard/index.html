@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kalshi paper dashboard — KXBTC15M</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">KXBTC15M edge finder</p>
+      <h1>Paper trades</h1>
+      <p class="sub">Scans, paper takes/skips, and settlements when available. Live trading is off.</p>
+    </div>
+    <div class="badges">
+      <span class="badge dry" id="dryBadge">DRY-RUN</span>
+      <span class="badge off">live trading off</span>
+    </div>
+  </header>
+
+  <section class="meta-row" id="metaRow">
+    <p><span class="k">Last run</span> <span id="lastRun">—</span></p>
+    <p><span class="k">Source</span> <span id="sourceLabel">—</span></p>
+    <p><span class="k">Generated</span> <span id="generatedAt">—</span></p>
+  </section>
+
+  <section class="cards" id="cards"></section>
+
+  <p class="empty-banner hidden" id="emptyTakes"></p>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Paper decisions</h2>
+      <div class="filters">
+        <label>Search
+          <input type="search" id="q" placeholder="ticker or reason" />
+        </label>
+        <label>Decision
+          <select id="kind">
+            <option value="">All</option>
+            <option value="take">Takes</option>
+            <option value="skip">Skips</option>
+            <option value="scan">Scans</option>
+          </select>
+        </label>
+        <label>Reason
+          <select id="reason">
+            <option value="">All</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="decisions">
+        <thead>
+          <tr>
+            <th data-key="ticker">Ticker</th>
+            <th data-key="ts">Time (ET / UTC)</th>
+            <th data-key="yes_mid" class="num">Yes mid</th>
+            <th data-key="yes_ask" class="num">Yes ask</th>
+            <th data-key="model_p" class="num">model_p</th>
+            <th data-key="edge" class="num">Edge</th>
+            <th data-key="clip" class="num">Clip</th>
+            <th data-key="decision">Decision</th>
+            <th data-key="reason">Reason</th>
+            <th data-key="outcome">Outcome</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint" id="tableHint"></p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>mm_would_skip overlay</h2>
+      <p class="sub">Comparison only. Does not cancel, replace, or post live orders.</p>
+    </div>
+    <div class="table-wrap">
+      <table id="overlays">
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Time (ET / UTC)</th>
+            <th class="num">Ask</th>
+            <th class="num">Count</th>
+            <th>Would skip</th>
+            <th>Reason</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint" id="overlayHint"></p>
+  </section>
+
+  <footer>
+    <p>Paper log only. Rebuild with <code>python build_dashboard.py</code> or serve with <code>python serve_dashboard.py</code>.</p>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

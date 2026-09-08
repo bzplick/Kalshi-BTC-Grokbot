@@ -51,6 +51,8 @@ python paper_once_calibrated.py
 python scan.py
 python calibrate.py
 python fetch_cf_paths.py --n 24
+python build_dashboard.py
+python serve_dashboard.py
 ```
 
 - `paper_once_calibrated.py` — BTC-only dry run of open `KXBTC15M`. Orderbook
@@ -70,6 +72,8 @@ python fetch_cf_paths.py --n 24
 - `fetch_cf_paths.py --n 24` — `GET /live_data/events/{event_ticker}` for settled
   `KXBTC15M` windows, cache under `raw/cf_paths/`. `--all` paginates everything.
   429 backoff is built into the client.
+- `build_dashboard.py` / `serve_dashboard.py` — local paper dashboard from
+  `ledger.jsonl` (or the committed sample). See **Paper dashboard** below.
 
 ## Model
 
@@ -105,3 +109,31 @@ python filters.py --mm-overlay raw/fills.json
 - `.gitignore` drops `.env`, `*.pem`, `**/kalshi.json`, caches, and `raw/`
   dumps (fills, orders, balance, positions, settlements, candles, markets,
   cf_paths).
+
+## Paper dashboard
+
+Local page of paper scans, takes/skips, mm overlay flags, and settlement
+outcomes when `raw/settlements.json` exists. **Does not post orders** and does
+not need Kalshi secrets.
+
+```bash
+python build_dashboard.py   # writes dashboard/data.json from ledger.jsonl (or the sample)
+python serve_dashboard.py   # rebuilds, then serves http://127.0.0.1:8765
+```
+
+Open [dashboard/index.html](dashboard/index.html) after a build, or visit the
+server URL. Filter/sort the decisions table; `mm_would_skip` events have their
+own section.
+
+If `ledger.jsonl` is missing (fresh clone, or you have not run
+`paper_once_calibrated.py` yet), the builder uses
+[`dashboard/sample_ledger.jsonl`](dashboard/sample_ledger.jsonl) so the page
+still renders. A prebuilt [`dashboard/data.json`](dashboard/data.json) is
+committed from that sample. Real `ledger.jsonl` / `paper_state.json` stay
+gitignored.
+
+Settlements are optional: match by ticker or event ticker. Missing file →
+outcome / win rate / PnL show **N/A**. Mixed ledger shapes are accepted
+(`decision: take_yes_paper|skip` from this tree, and older `event` values such
+as `scan`, `routine_start`, `no_entry`, `paper_skip`, `paper_calibrated_*`,
+`mm_would_skip`).

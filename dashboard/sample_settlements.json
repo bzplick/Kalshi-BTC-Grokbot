@@ -1,0 +1,15 @@
+{
+  "settlements": [
+    {
+      "ticker": "KXBTC15M-26SEP081915-38",
+      "event_ticker": "KXBTC15M-26SEP081915",
+      "market_result": "yes",
+      "note": "sample only — not a live fill"
+    },
+    {
+      "ticker": "KXBTC15M-26SEP081800-30",
+      "event_ticker": "KXBTC15M-26SEP081800",
+      "market_result": "no"
+    }
+  ]
+}
