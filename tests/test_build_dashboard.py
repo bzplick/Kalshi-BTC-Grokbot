@@ -60,6 +60,8 @@ class BuildSampleTests(unittest.TestCase):
         self.assertIsNotNone(s["pnl"])
         take = next(d for d in payload["decisions"] if d["decision"] == "take_yes_paper")
         self.assertEqual(take["outcome"], "win")
+        self.assertEqual(take["side"], "YES")
+        self.assertEqual(take["entry_ask"], 0.51)
         self.assertEqual(take["pnl"], round(4 * (1 - 0.51), 4))
         cal = next(d for d in payload["decisions"] if d["event"] == "paper_calibrated_take")
         self.assertEqual(cal["outcome"], "n/a")
@@ -89,6 +91,117 @@ class BuildSampleTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["n_paper_takes"], 0)
         self.assertIn("No paper takes yet", payload["empty_takes_copy"])
         self.assertEqual(payload["summary"]["n_overlay"], 1)
+
+
+class NoSideTests(unittest.TestCase):
+    def test_disabled_no_is_skip_and_dry_entry_is_take(self) -> None:
+        self.assertEqual(
+            bd.classify({"event": "paper_calibrated_no_entry", "reason": "no_side_disabled", "side": "NO"}),
+            "skip",
+        )
+        self.assertEqual(
+            bd.classify({"event": "paper_calibrated_no_entry", "reason": "gates"}),
+            "scan",
+        )
+        self.assertNotEqual(
+            bd.classify({"event": "paper_calibrated_no_entry", "reason": "gates"}),
+            "take",
+        )
+        self.assertEqual(
+            bd.classify({"event": "paper_calibrated_dry_entry", "side": "NO"}),
+            "take",
+        )
+
+    def test_no_entry_does_not_inflate_takes_and_dupes_collapse(self) -> None:
+        rows = [
+            {
+                "event": "paper_calibrated_dry_entry",
+                "ts": "2026-09-08T12:00:00Z",
+                "ticker": "KXBTC15M-T",
+                "side": "YES",
+                "ask": 0.50,
+                "qty": 4,
+            },
+            {
+                "event": "paper_calibrated_dry_entry",
+                "ts": "2026-09-08T13:00:00Z",
+                "ticker": "KXBTC15M-T",
+                "side": "YES",
+                "ask": 0.51,
+                "qty": 4,
+            },
+            {
+                "event": "paper_calibrated_dry_entry",
+                "ts": "2026-09-08T13:05:00Z",
+                "ticker": "KXBTC15M-T",
+                "side": "NO",
+                "ask": "0.42",
+                "yes_ask": 0.58,
+                "qty": 4,
+            },
+            {
+                "event": "paper_calibrated_no_entry",
+                "ts": "2026-09-08T13:06:00Z",
+                "ticker": "KXBTC15M-U",
+                "side": "NO",
+                "reason": "no_side_disabled",
+                "counterfactual": {"ticker": "KXBTC15M-U", "side": "NO", "ask": "0.40", "qty": 4},
+            },
+            {
+                "event": "paper_calibrated_no_entry",
+                "ts": "2026-09-08T13:07:00Z",
+                "ticker": "KXBTC15M-V",
+                "reason": "gates",
+            },
+        ]
+        payload = bd.build_payload(rows, ledger_path=SAMPLE, settlements_path=None, skipped_lines=0)
+        self.assertEqual(payload["summary"]["n_paper_takes"], 2)
+        self.assertGreaterEqual(payload["summary"]["n_skips"], 1)
+        self.assertIn("no_side_disabled", payload["summary"]["skips_by_reason"])
+        kinds = [d["kind"] for d in payload["decisions"] if d["ticker"] == "KXBTC15M-T"]
+        self.assertEqual(kinds.count("take"), 3)
+
+    def test_no_take_pnl_uses_no_ask_not_yes_ask(self) -> None:
+        row = {
+            "event": "paper_calibrated_dry_entry",
+            "ts": "2026-09-08T20:00:00Z",
+            "ticker": "KXBTC15M-NO",
+            "side": "NO",
+            "ask": "0.42",
+            "yes_ask": 0.58,
+            "qty": 4,
+            "model_p": 0.4,
+            "dry_run": True,
+        }
+        win = bd.normalize_decision(row, "take", 1, {"KXBTC15M-NO": {"yes": 0, "raw": {}}})
+        self.assertEqual(win["side"], "NO")
+        self.assertEqual(win["outcome"], "win")
+        self.assertEqual(win["entry_ask"], 0.42)
+        self.assertEqual(win["yes_ask"], 0.58)
+        self.assertEqual(win["pnl"], round(4 * (1 - 0.42), 4))
+        self.assertNotEqual(win["pnl"], round(4 * (1 - 0.58), 4))
+
+        loss = bd.normalize_decision(row, "take", 1, {"KXBTC15M-NO": {"yes": 1, "raw": {}}})
+        self.assertEqual(loss["outcome"], "loss")
+        self.assertEqual(loss["pnl"], round(4 * (0 - 0.42), 4))
+
+        explicit = dict(row)
+        explicit["no_ask"] = 0.40
+        explicit["ask"] = "0.42"
+        via_no = bd.normalize_decision(explicit, "take", 1, {"KXBTC15M-NO": {"yes": 0, "raw": {}}})
+        self.assertEqual(via_no["entry_ask"], 0.40)
+        self.assertEqual(via_no["pnl"], round(4 * (1 - 0.40), 4))
+
+        yes_only = {
+            "event": "paper_calibrated_dry_entry",
+            "ticker": "KXBTC15M-NO",
+            "side": "NO",
+            "yes_ask": 0.58,
+            "qty": 4,
+        }
+        missing = bd.normalize_decision(yes_only, "take", 1, {"KXBTC15M-NO": {"yes": 0, "raw": {}}})
+        self.assertIsNone(missing["pnl"])
+        self.assertEqual(missing["yes_ask"], 0.58)
 
 
 if __name__ == "__main__":
