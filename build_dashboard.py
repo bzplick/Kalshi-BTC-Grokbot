@@ -231,9 +231,14 @@ def classify(row: dict) -> str:
     if decision in TAKE_DECISIONS:
         return "take"
     if event_l.startswith("paper_calibrated"):
-        if "skip" in event_l:
+        # no_entry used to match the "entry" token and inflate n_paper_takes.
+        # Only a dry entry (or an explicit take) is a paper_calibrated take.
+        # no_side_disabled is a skip so the counterfactual can be counted, not scored as a take.
+        if "skip" in event_l or (
+            event_l.endswith("no_entry") and row.get("reason") == "no_side_disabled"
+        ):
             return "skip"
-        if any(tok in event_l for tok in ("take", "yes", "entry")):
+        if event_l.endswith("dry_entry") or any(tok in event_l for tok in ("take", "yes")):
             return "take"
         return "scan"
     if decision == "skip" or event in SKIP_EVENTS or decision == "error":
@@ -281,6 +286,35 @@ def paper_pnl(yes_result: int | None, ask: float | None, clip: int | None) -> fl
     return round(n * (yes_result - ask), 4)
 
 
+def no_entry_ask(row: dict) -> float | None:
+    """Entry price for a NO paper take: the NO ask, never the YES ask.
+
+    Dry entries log that price on ``ask`` (and ``no_ask`` when present).
+    ``yes_ask`` is the other side of the book and must not be used as the fill.
+    """
+    sources: list[dict] = [row]
+    cf = row.get("counterfactual")
+    if isinstance(cf, dict):
+        sources.append(cf)
+    for source in sources:
+        no_ask = as_float(source.get("no_ask"))
+        if no_ask is not None:
+            return no_ask
+        if source.get("ask") not in (None, ""):
+            return as_float(source.get("ask"))
+    return None
+
+
+def infer_side(row: dict, kind: str) -> str:
+    side = str(row.get("side") or "").strip().upper()
+    if side in {"YES", "NO"}:
+        return side
+    if kind != "take":
+        return ""
+    # Legacy takes (take_yes_paper, paper_calibrated_take) are YES.
+    return "YES"
+
+
 def relpath(path: Path | None) -> str | None:
     if path is None:
         return None
@@ -321,12 +355,19 @@ def normalize_decision(row: dict, kind: str, index: int, settle_index: dict[str,
     ticker = pick(row, "ticker", "market_ticker", "market")
     event_ticker = pick(row, "event_ticker")
     yes_mid = as_float(pick(row, "yes_mid", "mid", "yes_px"))
-    yes_ask = as_float(pick(row, "yes_ask", "ask", "premium", "yes_price_dollars", "yes_price"))
     model_p = as_float(pick(row, "model_p", "p_hat", "p_yes", "prob"))
-    edge = as_float(pick(row, "edge", "edge_yes"))
-    clip = as_int(pick(row, "clip", "contracts", "count", "hypothetical_contracts", "quantity"))
+    edge = as_float(pick(row, "edge", "edge_yes", "edge_no"))
+    clip = as_int(pick(row, "clip", "qty", "contracts", "count", "hypothetical_contracts", "quantity"))
     reason = pick(row, "reason", "skip_reason", "filter_reason")
     decision = display_decision(kind, row)
+    side = infer_side(row, kind)
+    if side == "NO":
+        # Do not let pick() prefer yes_ask over the NO ask.
+        yes_ask = as_float(row.get("yes_ask"))
+        entry_ask = no_entry_ask(row)
+    else:
+        yes_ask = as_float(pick(row, "yes_ask", "ask", "premium", "yes_price_dollars", "yes_price"))
+        entry_ask = yes_ask
 
     outcome = "n/a"
     pnl = None
@@ -336,8 +377,13 @@ def normalize_decision(row: dict, kind: str, index: int, settle_index: dict[str,
         if hit and hit.get("yes") is not None:
             settled = True
             y = int(hit["yes"])
-            pnl = paper_pnl(y, yes_ask, clip)
-            outcome = "win" if y == 1 else "loss"
+            if side == "NO":
+                # NO wins when YES resolves 0. PnL uses the NO ask as the entry price.
+                pnl = paper_pnl(1 - y, entry_ask, clip)
+                outcome = "win" if y == 0 else "loss"
+            else:
+                pnl = paper_pnl(y, entry_ask, clip)
+                outcome = "win" if y == 1 else "loss"
         else:
             outcome = "n/a"
     elif kind != "take":
@@ -353,6 +399,7 @@ def normalize_decision(row: dict, kind: str, index: int, settle_index: dict[str,
         "series": str(row.get("series") or ""),
         "yes_mid": yes_mid,
         "yes_ask": yes_ask,
+        "entry_ask": entry_ask,
         "model_p": model_p,
         "edge": edge,
         "clip": clip,
@@ -365,6 +412,7 @@ def normalize_decision(row: dict, kind: str, index: int, settle_index: dict[str,
         "pnl": pnl,
         "settled": settled,
         "dry_run": bool(row.get("dry_run", True)),
+        "side": side,
     }
 
 
@@ -434,7 +482,18 @@ def build_payload(
     for i, row in enumerate(overlays, start=1):
         row["id"] = i
 
-    takes = [d for d in decisions if d["kind"] == "take"]
+    # Takes are deduped by ticker+side (newest first). paper_calibrated_no_entry
+    # is not a take, so a disabled NO counterfactual does not inflate n_paper_takes.
+    takes = []
+    seen_takes: set[tuple[str, str]] = set()
+    for d in decisions:
+        if d["kind"] != "take":
+            continue
+        key = (d.get("ticker") or "", str(d.get("side") or ""))
+        if key in seen_takes:
+            continue
+        seen_takes.add(key)
+        takes.append(d)
     skips = [d for d in decisions if d["kind"] == "skip"]
     scans_n = sum(1 for d in decisions if d.get("ticker") and d["kind"] in {"take", "skip", "scan"})
 

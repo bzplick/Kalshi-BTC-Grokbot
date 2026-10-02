@@ -61,6 +61,14 @@ python serve_dashboard.py
   **skip if ask/premium > 0.65** (`premium_gt_065`); **clip default 4, hard-cap 5,
   never 6–8** (`clip_gt_5`). JSONL decisions to stdout + `ledger.jsonl`.
   **Never POSTs orders.** ETH is skipped (noted in the output).
+  **NO-side paper entries are off** unless `PAPER_ALLOW_NO=1` (`ALLOW_NO_ENTRIES`).
+  Scoring of 110 paper takes showed NO lost (40.8% win, −11.9% ROI; the model
+  overestimates NO by ~17 points) while YES was fine. With the flag unset, a
+  best-side NO does not emit `DRY_ENTRY` or `paper_calibrated_dry_entry`. The
+  scanner prints `NO_ENTRY (no_side_disabled) would-be NO <ticker> ...` and
+  logs `paper_calibrated_no_entry` (`reason=no_side_disabled` plus a
+  `counterfactual`) so that would-be NO can still be scored. YES entries are
+  unchanged. This flag never places a live order.
 - `scan.py` — table of ticker, time left, yes bid/ask, model_p, edge, gates.
   BTC uses `edge_model`. Optional `python scan.py --eth` adds `KXETH15M` with a
   crude yes_mid-as-p fallback (not for trading).
@@ -136,4 +144,6 @@ Settlements are optional: match by ticker or event ticker. Missing file →
 outcome / win rate / PnL show **N/A**. Mixed ledger shapes are accepted
 (`decision: take_yes_paper|skip` from this tree, and older `event` values such
 as `scan`, `routine_start`, `no_entry`, `paper_skip`, `paper_calibrated_*`,
-`mm_would_skip`).
+`mm_would_skip`). `n_paper_takes` counts takes deduped by ticker and side;
+`paper_calibrated_no_entry` with `reason=no_side_disabled` is a skip, not a
+take. A NO take wins when YES settles at 0, and its PnL uses the NO ask.
