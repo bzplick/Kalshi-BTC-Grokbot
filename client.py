@@ -24,7 +24,10 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 log = logging.getLogger("kalshi.client")
 
-DEFAULT_BASE = "https://external-api.kalshi.com/trade-api/v2"
+# Official production Trade API. Kalshi also documents
+# https://external-api.kalshi.com/trade-api/v2; that host may return nginx HTML
+# 403 from some cloud IPs, so this client defaults to the elections host.
+PROD_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 API_ROOT_PATH = "/trade-api/v2"
 ORDER_PATH_MARKERS = ("/portfolio/orders", "/orders")
 
@@ -73,7 +76,7 @@ class KalshiClient:
         max_retries: int = 8,
     ) -> None:
         load_dotenv()
-        self.base = (base or os.environ.get("KALSHI_BASE") or DEFAULT_BASE).rstrip("/")
+        self.base = (base or os.environ.get("KALSHI_BASE") or PROD_BASE).rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
         self.dry_run = dry_run_enabled() if dry_run is None else bool(dry_run)

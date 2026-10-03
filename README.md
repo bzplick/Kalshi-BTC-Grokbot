@@ -32,11 +32,16 @@ cp .env.example .env
 KALSHI_DRY_RUN=1
 MAX_TRADE_DOLLARS=5
 # KALSHI_SECRETS_PATH=/path/to/kalshi.json
-# KALSHI_BASE=https://external-api.kalshi.com/trade-api/v2
+# KALSHI_BASE=https://api.elections.kalshi.com/trade-api/v2
 ```
 
-Market data GETs against `https://external-api.kalshi.com/trade-api/v2` work
-without keys. Authenticated calls need a local secrets file
+The production default is `https://api.elections.kalshi.com/trade-api/v2`.
+Kalshi also documents `https://external-api.kalshi.com/trade-api/v2`; that
+host may return nginx HTML 403 from some cloud IPs, so this repo uses the
+elections host. Both are official. Override with `KALSHI_BASE`.
+
+Market data GETs against the production Trade API work without keys.
+Authenticated calls need a local secrets file
 `{ "api_key_id": "...", "private_key": "-----BEGIN ..." }` at
 `KALSHI_SECRETS_PATH` (or `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY`). The
 client signs `timestamp_ms + METHOD + path` with RSA-PSS SHA-256
